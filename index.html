@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Depose Chess</title>
+<style>
+:root{--bg:#f4f1ea;--fg:#222;--btn:#fff;--bd:#bbb;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1c1e;--fg:#eee;--btn:#2c2c2e;--bd:#555}}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+#st{min-height:1.4em;font-size:1.05rem;font-weight:600;text-align:center;padding:0 8px}
+#b{--s:min(12vw,9vh,76px);display:grid;grid-template-columns:repeat(8,var(--s));border:3px solid #5a4632;border-radius:3px}
+.sq{width:var(--s);height:var(--s);display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.l{background:#ecd9b0}.d{background:#b58863}
+.sq span{font-size:calc(var(--s)*.8);line-height:1;font-family:"Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",serif}
+.sq .w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000,0 0 3px #000}
+.sq .b{color:#111;text-shadow:0 0 1px #fff}
+.last::before{content:"";position:absolute;inset:0;background:rgba(255,235,60,.35)}
+.sel{box-shadow:inset 0 0 0 4px #2e8b57}
+.dpk{box-shadow:inset 0 0 0 3px #3a7bd5}
+.dpk.sel{box-shadow:inset 0 0 0 4px #8e44ad}
+.lock{box-shadow:inset 0 0 0 4px #c0392b}
+.tgt::after{content:"";position:absolute;width:28%;height:28%;border-radius:50%;background:rgba(40,40,40,.4)}
+.cap::after{content:"";position:absolute;inset:3px;border-radius:50%;border:4px solid rgba(40,40,40,.4)}
+.dm .tgt::after{background:rgba(142,68,173,.55)}
+#ctl{display:flex;gap:8px;min-height:38px}
+button{font:inherit;padding:6px 14px;border:1px solid var(--bd);background:var(--btn);color:var(--fg);border-radius:6px;cursor:pointer}
+button.p{font-size:1.5rem;padding:2px 12px}
+</style></head><body>
+<div id="st"></div><div id="b"></div><div id="ctl"></div>
+<script>
+const SYM={K:'♚',Q:'♛',R:'♜',B:'♝',N:'♞',P:'♟\uFE0E'},NM={w:'White',b:'Black'};
+const opp=c=>c=='w'?'b':'w',R=i=>i>>3,C=i=>i&7,$=id=>document.getElementById(id);
+const ND=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const KD=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const BD=KD.filter(d=>d[0]&&d[1]),RD=KD.filter(d=>!d[0]||!d[1]);
+const CORN={63:'wK',56:'wQ',7:'bK',0:'bQ'};
+let S,H;
+function attacks(b,col){const a=new Uint8Array(64);
+ for(let i=0;i<64;i++){const p=b[i];if(!p||p[0]!=col)continue;const t=p[1],r=R(i),c=C(i);
+  const add=(rr,cc)=>{if(rr>=0&&rr<8&&cc>=0&&cc<8)a[rr*8+cc]=1};
+  if(t=='P'){const d=col=='w'?-1:1;add(r+d,c-1);add(r+d,c+1)}
+  else if(t=='N')ND.forEach(d=>add(r+d[0],c+d[1]));
+  else if(t=='K')KD.forEach(d=>add(r+d[0],c+d[1]));
+  else(t=='B'?BD:t=='R'?RD:KD).forEach(d=>{let rr=r+d[0],cc=c+d[1];while(rr>=0&&rr<8&&cc>=0&&cc<8){a[rr*8+cc]=1;if(b[rr*8+cc])break;rr+=d[0];cc+=d[1]}});
+ }return a}
+const inCheck=(b,c)=>attacks(b,opp(c))[b.indexOf(c+'K')]==1;
+function pseudo(s){const b=s.b,c=s.turn,m=[];
+ for(let i=0;i<64;i++){const p=b[i];if(!p||p[0]!=c||i==s.locked)continue;const t=p[1],r=R(i),f=C(i);
+  const push=(to,x)=>m.push({f:i,t:to,...x});
+  if(t=='P'){const d=c=='w'?-1:1,st=c=='w'?6:1,pr=c=='w'?0:7,one=(r+d)*8+f;
+   const addP=(to,x={})=>R(to)==pr?['Q','R','B','N'].forEach(q=>push(to,{...x,promo:q})):push(to,x);
+   if(!b[one]){addP(one);if(r==st&&!b[one+d*8])push(one+d*8,{dbl:1})}
+   [-1,1].forEach(dc=>{const cc=f+dc;if(cc<0||cc>7)return;const to=(r+d)*8+cc;
+    if(b[to]&&b[to][0]!=c)addP(to);else if(to==s.ep&&!b[to]&&b[r*8+cc]==opp(c)+'P')push(to,{ep:1})});
+  }else if(t=='N'||t=='K')(t=='N'?ND:KD).forEach(d=>{const rr=r+d[0],cc=f+d[1];if(rr<0||rr>7||cc<0||cc>7)return;const to=rr*8+cc;if(!b[to]||b[to][0]!=c)push(to)});
+  else(t=='B'?BD:t=='R'?RD:KD).forEach(d=>{let rr=r+d[0],cc=f+d[1];while(rr>=0&&rr<8&&cc>=0&&cc<8){const to=rr*8+cc;if(b[to]){if(b[to][0]!=c)push(to);break}push(to);rr+=d[0];cc+=d[1]}});
+ }
+ const k=(c=='w'?7:0)*8+4,atk=attacks(b,opp(c));
+ if(b[k]==c+'K'&&!atk[k]){
+  if(s.cas[c+'K']&&b[k+3]==c+'R'&&k+3!=s.locked&&!b[k+1]&&!b[k+2]&&!atk[k+1]&&!atk[k+2])m.push({f:k,t:k+2,castle:'K'});
+  if(s.cas[c+'Q']&&b[k-4]==c+'R'&&k-4!=s.locked&&!b[k-1]&&!b[k-2]&&!b[k-3]&&!atk[k-1]&&!atk[k-2])m.push({f:k,t:k-2,castle:'Q'});
+ }return m}
+function make(s,m){const nb=s.b.slice(),p=nb[m.f],c=p[0],cas={...s.cas},cap=nb[m.t]||m.ep;
+ nb[m.t]=m.promo?c+m.promo:p;nb[m.f]=null;
+ if(m.ep)nb[R(m.f)*8+C(m.t)]=null;
+ if(m.castle){const k=m.castle=='K',rf=k?m.f+3:m.f-4;nb[k?m.f+1:m.f-1]=nb[rf];nb[rf]=null}
+ if(p[1]=='K'){cas[c+'K']=0;cas[c+'Q']=0}
+ for(const x of[m.f,m.t])if(CORN[x])cas[CORN[x]]=0;
+ return{...s,b:nb,cas,ep:m.dbl?(m.f+m.t)/2:-1,half:(p[1]=='P'||cap)?0:s.half+1,last:m.t,locked:-1}}
+const legal=s=>pseudo(s).filter(m=>!inCheck(make(s,m).b,s.turn));
+function dTargets(s,from){const c=s.turn,p=s.b[from],nb=s.b.slice();nb[from]=null;const a=attacks(nb,c),res=[];
+ for(let i=0;i<64;i++){if(i==from||nb[i]||a[i])continue;
+  if(p[1]=='P'&&(R(i)==0||R(i)==7))continue;
+  if(p[1]=='B'&&(R(i)+C(i))%2!=(R(from)+C(from))%2)continue;
+  nb[i]=p;const bad=inCheck(nb,c);nb[i]=null;if(!bad)res.push(i)}
+ return res}
+const insuf=b=>{const o=b.filter(p=>p&&p[1]!='K');return o.length==0||(o.length==1&&'BN'.includes(o[0][1]))};
+function nextTurn(s){s.turn=opp(s.turn);s.phase='move';s.sel=-1;s.dsel=-1;s.promo=null;s.dp={};s.moves=legal(s);
+ const chk=s.chk=inCheck(s.b,s.turn),k=s.b.join()+s.turn+JSON.stringify(s.cas)+s.ep+s.locked;
+ H[k]=(H[k]||0)+1;s.over=null;
+ if(!s.moves.length)s.over=chk?{win:opp(s.turn)}:{draw:'stalemate'};
+ else if(insuf(s.b))s.over={draw:'insufficient material'};
+ else if(s.half>=100)s.over={draw:'fifty-move rule'};
+ else if(H[k]>=3)s.over={draw:'threefold repetition'};
+ S=s;render()}
+function doMove(m){const s=make(S,m);s.phase='depose';s.sel=-1;s.dsel=-1;s.promo=null;s.dp={};s.moves=[];
+ for(let i=0;i<64;i++){const p=s.b[i];if(p&&p[0]!=s.turn&&p[1]!='K'&&i!=s.last){const t=dTargets(s,i);if(t.length)s.dp[i]=t}}
+ S=s;if(!Object.keys(s.dp).length)return nextTurn(s);render()}
+function doDepose(from,to){const s=S,nb=s.b.slice();nb[to]=nb[from];nb[from]=null;s.b=nb;
+ if(CORN[from])s.cas={...s.cas,[CORN[from]]:0};
+ s.locked=to;nextTurn(s)}
+function clk(i){if(S.over||S.promo)return;
+ if(S.phase=='move'){const p=S.b[i];
+  if(S.sel>=0){const ms=S.moves.filter(m=>m.f==S.sel&&m.t==i);
+   if(ms.length){if(ms[0].promo){S.promo=ms;render();return}return doMove(ms[0])}}
+  S.sel=(p&&p[0]==S.turn&&S.moves.some(m=>m.f==i))?i:-1;
+ }else{
+  if(S.dsel>=0&&S.dp[S.dsel].includes(i))return doDepose(S.dsel,i);
+  S.dsel=(S.dp[i]&&i!=S.dsel)?i:-1}
+ render()}
+function render(){const tg=new Set();
+ if(S.phase=='move'&&S.sel>=0)S.moves.filter(m=>m.f==S.sel).forEach(m=>tg.add(m.t));
+ if(S.phase=='depose'&&S.dsel>=0)S.dp[S.dsel].forEach(t=>tg.add(t));
+ let h='';
+ for(let i=0;i<64;i++){const p=S.b[i];let c='sq '+((R(i)+C(i))%2?'d':'l');
+  if(i==S.sel||i==S.dsel)c+=' sel';
+  if(tg.has(i))c+=p?' cap':' tgt';
+  if(i==S.locked)c+=' lock';
+  if(S.phase=='depose'&&S.dp[i])c+=' dpk';
+  if(i==S.last)c+=' last';
+  h+=`<div class="${c}" onclick="clk(${i})">${p?`<span class="${p[0]}">${SYM[p[1]]}</span>`:''}</div>`}
+ const bd=$('b');bd.innerHTML=h;bd.className=S.phase=='depose'?'dm':'';
+ let t,ctl='';
+ if(S.over)t=S.over.win?`${NM[opp(S.over.win)]} cannot release the king — ${NM[S.over.win]} wins`:`Draw by ${S.over.draw}`;
+ else if(S.promo){t=`${NM[S.turn]}: promote to`;ctl=['Q','R','B','N'].map(q=>`<button class="p" onclick="doMove(S.promo.find(m=>m.promo=='${q}'))">${SYM[q]}</button>`).join('')}
+ else if(S.phase=='depose'){t=`${NM[S.turn]}: depose an enemy piece (optional)`;ctl='<button onclick="S.locked=-1;nextTurn(S)">Skip depose</button>'}
+ else t=`${NM[S.turn]} to move${S.chk?' — check':''}`;
+ $('st').textContent=t;
+ $('ctl').innerHTML=ctl+'<button onclick="init()">New game</button>'}
+function init(){const b=Array(64).fill(null),back='RNBQKBNR';
+ for(let c=0;c<8;c++){b[c]='b'+back[c];b[8+c]='bP';b[48+c]='wP';b[56+c]='w'+back[c]}
+ H={};S={b,turn:'b',cas:{wK:1,wQ:1,bK:1,bQ:1},ep:-1,half:0,locked:-1,last:-1};nextTurn(S)}
+init();
+</script></body></html>
